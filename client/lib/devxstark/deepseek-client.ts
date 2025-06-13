@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // client/lib/devxstark/deepseek-client.ts
-
 interface DeepSeekMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
