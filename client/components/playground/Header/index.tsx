@@ -12,30 +12,13 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
-import {
-  Home,
-  Upload,
-  MessageSquare,
-  Book,
-  Wallet,
-  Bot,
-  LogOut,
-} from "lucide-react";
+import { Home, Book, Wallet, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { Menu, X } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
-
-const MODELS = [
-  { id: "deepseek", name: "DeepSeek", icon: "🔍" },
-  { id: "claude", name: "Claude", icon: "🤖" },
-  { id: "openai", name: "OpenAI", icon: "⚡" },
-  { id: "llama", name: "Llama 3", icon: "🦙" },
-  { id: "mistral", name: "Mistral", icon: "🌪️" },
-];
 
 interface HeaderProps {
   showClearButton: boolean;
@@ -135,21 +118,12 @@ export default function Header({
 
           <nav className="hidden md:flex gap-8 text-sm">{centerItems}</nav>
 
-          <motion.div
-            className="flex-1 flex items-center justify-start md:justify-end gap-2"
-            initial={{ x: 200, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 1.5, delay: 1 }}
-          >
-            <div className="hidden md:flex items-center gap-2">
-              <Bot size={18} className="text-black" />
-              <Select value={selectedModel} onValueChange={onModelChange}>
-                <SelectTrigger className="w-[150px] bg-white text-black">
+          {isConnected ? (
+            <div className="flex items-center gap-2">
+              <Select>
+                <SelectTrigger className="w-[180px] bg-green-100 text-green-800 rounded-full text-sm px-3 py-1 hover:bg-green-200">
                   <div className="flex items-center gap-2">
-                    <span>
-                      {MODELS.find((m) => m.id === selectedModel)?.icon}
-                    </span>
-                    <SelectValue placeholder="Select Model" />
+                    <span>{formatAddress(address)}</span>
                   </div>
                 </SelectTrigger>
                 <SelectContent className="bg-white shadow-md rounded-md flex justify-center">
@@ -189,51 +163,31 @@ export default function Header({
             </div>
           ) : null}
 
-            {/* User Session Info & Logout */}
-            {status === "loading" ? (
-              <div className="hidden md:flex items-center gap-2">
-                <div className="w-6 h-6 border-2 border-gray-400 border-t-black rounded-full animate-spin" />
-              </div>
-            ) : session ? (
-              <div className="hidden md:flex items-center gap-2">
-                <motion.button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 px-3 py-2 bg-red-500/80 hover:bg-red-600 text-white rounded-lg text-sm transition-all duration-300 hover:scale-105"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <LogOut size={16} />
-                  <span className="hidden lg:inline">Sign Out</span>
-                </motion.button>
-              </div>
-            ) : null}
-
-            {isDeleteVisible && (
-              <Button
-                onClick={() => handleDelete(selectedNode)}
-                className="px-6 bg-[#252525] hover:bg-[#323232] text-white"
-              >
-                Delete node
-              </Button>
-            )}
-            {showClearButton && (
-              <Button
-                onClick={handleClear}
-                className="px-6 bg-[#252525] hover:bg-[#323232] text-white"
-              >
-                Clear
-              </Button>
-            )}
-            {showFinishButton && (
-              <Compile
-                nodes={nodes}
-                edges={edges}
-                isOpen={isCompileModalOpen}
-                onOpenChange={setIsCompileModalOpen}
-                flowSummary={flowSummary}
-              />
-            )}
-          </motion.div>
+          {isDeleteVisible && (
+            <Button
+              onClick={() => handleDelete(selectedNode)}
+              className="px-6 bg-[#252525] hover:bg-[#323232] text-white"
+            >
+              Delete node
+            </Button>
+          )}
+          {showClearButton && (
+            <Button
+              onClick={handleClear}
+              className="px-6 bg-[#252525] hover:bg-[#323232] text-white"
+            >
+              Clear
+            </Button>
+          )}
+          {showFinishButton && (
+            <Compile
+              nodes={nodes}
+              edges={edges}
+              isOpen={isCompileModalOpen}
+              onOpenChange={setIsCompileModalOpen}
+              flowSummary={flowSummary}
+            />
+          )}
 
           <div className="md:hidden">
             <button
@@ -249,25 +203,6 @@ export default function Header({
           <div className="md:hidden bg-white p-4 rounded-lg shadow-lg">
             {centerItems}
             <div className="mt-4 flex flex-col gap-2">
-              <Select value={selectedModel} onValueChange={onModelChange}>
-                <SelectTrigger className="w-full bg-gray-100">
-                  <div className="flex items-center gap-2">
-                    <Bot size={16} />
-                    <SelectValue placeholder="Select Model" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {MODELS.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{model.icon}</span>
-                        {model.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               {/* Mobile User Session & Logout */}
               {status === "loading" ? (
                 <div className="flex justify-center py-2">
