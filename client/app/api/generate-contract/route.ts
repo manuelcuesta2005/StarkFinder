@@ -1,9 +1,55 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 import { CairoContractGenerator } from "@/lib/devxstark/contract-generator1";
+import { DojoContractGenerator } from "@/lib/devxstark/dojo-contract-generator";
+import { scarbGenerator } from "@/lib/devxstark/scarb-generator";
 import prisma from "@/lib/db";
 import { getOrCreateUser } from "@/app/api/transactions/helper";
-import { DojoContractGenerator } from "@/lib/devxstark/dojo-contract-generator";
+import path from "path";
+import { promises as fs } from "fs";
+
+// Helper function to save both source and Scarb files
+async function saveContractWithScarb(
+  sourceCode: string,
+  contractName: string = "lib"
+): Promise<{ sourcePath: string; scarbPath: string }> {
+  const contractsDir = path.join(process.cwd(), "..", "contracts");
+  const srcDir = path.join(contractsDir, "src");
+
+  try {
+    // Ensure directories exist
+    await fs.mkdir(srcDir, { recursive: true });
+
+    // Save the Cairo source code
+    const sourceFilePath = path.join(srcDir, `${contractName}.cairo`);
+    await fs.writeFile(sourceFilePath, sourceCode, { encoding: 'utf8', flag: 'w' });
+
+    // Generate and save Scarb.toml
+    const scarbToml = await scarbGenerator.generateScarbToml(sourceCode, contractName);
+    const scarbFilePath = path.join(contractsDir, "Scarb.toml");
+    await fs.writeFile(scarbFilePath, scarbToml, { encoding: 'utf8', flag: 'w' });
+
+    // Verify files were written correctly
+    const writtenSource = await fs.readFile(sourceFilePath, 'utf8');
+    const writtenScarb = await fs.readFile(scarbFilePath, 'utf8');
+    
+    if (writtenSource !== sourceCode) {
+      throw new Error('Source file content verification failed');
+    }
+
+    return {
+      sourcePath: sourceFilePath,
+      scarbPath: scarbFilePath
+    };
+  } catch (error) {
+    console.error("Error saving contract files:", error);
+    throw new Error(
+      `Failed to save contract files: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   const controller = new AbortController();
@@ -62,6 +108,8 @@ export async function POST(req: NextRequest) {
       new ReadableStream({
         async start(controller) {
           let accumulatedContent = "";
+          let finalSourceCode = "";
+          let scarbToml = "";
 
           // Helper function to extract code from content
           const extractCodeFromContent = (content: string): string => {
@@ -118,26 +166,64 @@ export async function POST(req: NextRequest) {
               throw new Error("Generated code is empty or too short");
             }
 
-            // Save the contract source code
-            const savedPath = await generator.saveContract(finalCode, "lib");
+            finalSourceCode = finalCode;
+
+            // Generate Scarb.toml for the contract
+            try {
+              scarbToml = await scarbGenerator.generateScarbToml(finalCode, "lib");
+              console.log("Generated Scarb.toml successfully");
+            } catch (scarbError) {
+              console.error("Error generating Scarb.toml:", scarbError);
+              // Use a basic fallback if generation fails
+              scarbToml = `[package]
+name = "generated_contract"
+version = "0.1.0"
+edition = "2024_07"
+cairo_version = "2.8.0"
+
+[dependencies]
+starknet = "2.8.0"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+
+[cairo]
+sierra-replace-ids = true`;
+            }
+
+            const { sourcePath, scarbPath } = await saveContractWithScarb(finalCode, "lib");
+            console.log(`Contract saved to: ${sourcePath}`);
+            console.log(`Scarb.toml saved to: ${scarbPath}`);
             
+            // Save to database
             await getOrCreateUser(userId);
             await prisma.generatedContract.create({
               data: {
                 name: "Generated Contract",
                 sourceCode: finalCode,
+                scarbConfig: scarbToml,
                 userId,
               },
             });
 
-            // Send ONLY the final clean code
-            controller.enqueue(new TextEncoder().encode(finalCode));
+            // Create a response object that includes both source code and Scarb.toml
+            const responseData = {
+              sourceCode: finalCode,
+              scarbToml: scarbToml,
+              success: true
+            };
+
+            // Send the response as JSON
+            controller.enqueue(new TextEncoder().encode(JSON.stringify(responseData)));
 
           } catch (error) {
             console.error('Generation error:', error);
-            controller.enqueue(
-              new TextEncoder().encode(`// Error: ${error instanceof Error ? error.message : "An unexpected error occurred"}`)
-            );
+            const errorResponse = {
+              success: false,
+              error: error instanceof Error ? error.message : "An unexpected error occurred"
+            };
+            controller.enqueue(new TextEncoder().encode(JSON.stringify(errorResponse)));
           } finally {
             controller.close();
             clearTimeout(timeoutId);
@@ -146,7 +232,7 @@ export async function POST(req: NextRequest) {
       }),
       {
         headers: {
-          "Content-Type": "text/plain",
+          "Content-Type": "application/json",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
         },

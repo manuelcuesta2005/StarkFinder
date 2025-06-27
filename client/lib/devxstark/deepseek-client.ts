@@ -1,5 +1,3 @@
-// client/lib/devxstark/deepseek-client.ts
-
 interface DeepSeekMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
