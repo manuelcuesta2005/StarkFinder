@@ -15,6 +15,7 @@ import {
   CheckCircle,
   XCircle,
   ArrowLeft,
+  ScrollText,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Steps } from "@/components/ui/steps";
@@ -98,6 +99,39 @@ const initializeCodeStore = (setSourceCode: (code: string) => void) => {
   }
 };
 
+const extractImports = (code: string): string[] => {
+  const importRegex = /use\s+([a-zA-Z0-9_:]+)(::\{[^}]+\})?;/g;
+  const matches = [...code.matchAll(importRegex)];
+  return matches.flatMap((matchArr) => {
+    const base = matchArr[1];
+    const inner = matchArr[2];
+    if (inner) {
+      return inner
+        .replace(/^::\{|\}$/g, "")
+        .split(",")
+        .map((item) => `${base}::${item.trim()}`);
+    }
+    return [base];
+  });
+};
+
+const generateScarb = (deeps: string[]): string => {
+  const sanitizeDeeps = deeps.map((dep) => dep.replace(/[^a-zA-Z0-9:_-]/g, ""));
+  const uniqueDeeps = Array.from(new Set(sanitizeDeeps));
+  const baseNames = Array.from(
+    new Set(uniqueDeeps.map((dep) => dep.split("::")[0]))
+  );
+  const deepFormatted = baseNames
+    .map((name) => `${name} = "2.9.1"`)
+    .join("\n");
+  return `[package]
+    name = "GeneratedContract"
+    version = "0.1.0"
+    
+[dependencies]
+    ${deepFormatted}`;
+};
+
 export default function CodeEditor() {
   const router = useRouter();
   const setSourceCode = useCodeStore((state) => state.setSourceCodeStore);
@@ -111,6 +145,8 @@ export default function CodeEditor() {
   const [steps, setSteps] = useState<DeploymentStep[]>(initialSteps);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [contractName, setContractName] = useState("");
+  const [createScarb, setCreateScarb] = useState("");
+  const [showScarb, setShowScarb] = useState(false);
 
   // Initialize code store and component state from localStorage on mount
   useEffect(() => {
@@ -145,7 +181,8 @@ export default function CodeEditor() {
   // Scroll logs to bottom when they change
   useEffect(() => {
     if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+      logsContainerRef.current.scrollTop =
+        logsContainerRef.current.scrollHeight;
     }
   }, [logs]);
 
@@ -206,7 +243,7 @@ export default function CodeEditor() {
                   setSourceCode(accumulatedCode);
                 }
               } catch (jsonError) {
-                console.log(jsonError)
+                console.log(jsonError);
                 // If it's not valid JSON, just treat it as regular text
                 accumulatedCode += decodedValue;
                 setSourceCode(accumulatedCode);
@@ -222,6 +259,13 @@ export default function CodeEditor() {
     };
 
     fetchStreamedData();
+  };
+
+  const handleGenerateScarb = () => {
+    const dependencies = extractImports(sourceCode);
+    const toml = generateScarb(dependencies);
+    setCreateScarb(toml);
+    setShowScarb(true);
   };
 
   const handleCompile = async (): Promise<void> => {
@@ -292,7 +336,6 @@ export default function CodeEditor() {
 
   // Add a DEBUG button in development to view state (remove in production)
 
-
   {
     return (
       <div className="flex h-full relative justify-start flex-col bg-[#f9f7f3] text-black pt-4 selectable-none">
@@ -329,6 +372,14 @@ export default function CodeEditor() {
                 >
                   <Shield className="w-5 h-5" />
                   {isAuditing ? "Auditing..." : "Audit Contract"}
+                </Button>
+                <Button
+                  onClick={handleGenerateScarb}
+                  className="bg-yellow-600 hover:bg-yellow-700"
+                  disabled={showScarb}
+                >
+                  <ScrollText className="w-5 h-5"/>
+                  {showScarb ? "Generating..." : "Generate Scarb"}
                 </Button>
                 <Button
                   onClick={() => handleCompile()}
@@ -405,6 +456,18 @@ export default function CodeEditor() {
               </div>
             )}
 
+            {/* Scarb.toml */}
+            {showScarb && (
+              <Card className="mt-4 p-4 bg-black text-yellow-300">
+                <h3 className="text-lg font-semibold mb-2 text-white">
+                  Generated Scarb.toml
+                </h3>
+                <pre className="whitespace-pre-wrap font-mono text-sm">
+                  {createScarb}
+                </pre>
+              </Card>
+            )}
+
             {/* Result */}
             <AnimatePresence>
               {result && (
@@ -413,10 +476,11 @@ export default function CodeEditor() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 100 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className={`sticky bottom-0 left-0 right-0 p-6 border mt-4 ${result.success
-                    ? "bg-green-900/95 border-green-700"
-                    : "bg-red-900/95 border-red-700"
-                    }`}
+                  className={`sticky bottom-0 left-0 right-0 p-6 border mt-4 ${
+                    result.success
+                      ? "bg-green-900/95 border-green-700"
+                      : "bg-red-900/95 border-red-700"
+                  }`}
                 >
                   {result.success ? (
                     <div className="flex flex-col gap-2">
